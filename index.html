@@ -1,0 +1,132 @@
+<!-- public/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatsApp</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+        #messages { list-style-type: none; padding: 0; height: 300px; overflow-y: scroll; border: 1px solid #ccc; margin-bottom: 10px; }
+        #messages li { padding: 8px; margin-bottom: 10px; border-radius: 5px; }
+        #messages li.sent { background-color: #d1e7dd; text-align: right; }
+        #messages li.received { background-color: #f4f4f4; }
+        #message-form { display: flex; }
+        #message-form input { flex-grow: 1; padding: 10px; }
+        #message-form button { padding: 10px; }
+        #username-form { display: flex; margin-bottom: 10px; }
+        #username-form input { flex-grow: 1; padding: 10px; }
+        #username-form button { padding: 10px; }
+        #online-users { margin-bottom: 10px; }
+        #online-users select { padding: 10px; }
+    </style>
+</head>
+<body>
+    <ul id="messages"></ul>
+    <form id="username-form">
+        <input id="username-input" autocomplete="off" placeholder="Enter your username..." />
+        <button>Set Username</button>
+    </form>
+    <div id="online-users">
+        <label for="users-list">Chat with: </label>
+        <select id="users-list">
+            <option value="" disabled selected>Select a user</option>
+        </select>
+    </div>
+    <form id="message-form">
+        <input id="message-input" autocomplete="off" placeholder="Type a message..." />
+        <button>Send</button>
+    </form>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let username = '';
+        let currentChatRecipient = '';
+        let messagesStore = {};
+
+        const usernameForm = document.getElementById('username-form');
+        const usernameInput = document.getElementById('username-input');
+        const usersList = document.getElementById('users-list');
+        const messages = document.getElementById('messages');
+        
+        usernameForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            if (usernameInput.value) {
+                username = usernameInput.value;
+                socket.emit('set username', username);
+                usernameForm.style.display = 'none';
+            }
+        });
+
+        const form = document.getElementById('message-form');
+        const input = document.getElementById('message-input');
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const recipient = usersList.value;
+            const messageText = input.value;
+            if (messageText && recipient) {
+
+                storeMessage(recipient, { sender: username, message: messageText, type: 'sent' });
+                
+                if (recipient === currentChatRecipient) {
+                    addMessageToChat(username, messageText, 'sent');
+                }
+                
+                socket.emit('private message', { recipient: recipient, message: messageText });
+                
+                input.value = '';
+            }
+        });
+
+        socket.on('private message', function(data) {
+            storeMessage(data.sender, { sender: data.sender, message: data.message, type: 'received' });
+            
+            if (data.sender === currentChatRecipient) {
+                addMessageToChat(data.sender, data.message, 'received');
+            }
+        });
+
+        socket.on('online users', function(users) {
+            usersList.innerHTML = '<option value="" disabled selected>Select a user</option>';
+            users.forEach(user => {
+                if (user !== username) {
+                    const option = document.createElement('option');
+                    option.value = user;
+                    option.textContent = user;
+                    usersList.appendChild(option);
+                }
+            });
+        });
+
+        usersList.addEventListener('change', function(e) {
+            currentChatRecipient = e.target.value;
+            displayChatWith(currentChatRecipient);
+        });
+
+        function storeMessage(recipient, message) {
+            if (!messagesStore[recipient]) {
+                messagesStore[recipient] = [];
+            }
+            messagesStore[recipient].push(message);
+        }
+
+        function displayChatWith(recipient) {
+            messages.innerHTML = '';
+            if (messagesStore[recipient]) {
+                messagesStore[recipient].forEach(message => {
+                    addMessageToChat(message.sender, message.message, message.type);
+                });
+            }
+        }
+
+        function addMessageToChat(sender, message, type) {
+            const li = document.createElement('li');
+            li.textContent = `${sender}: ${message}`;
+            li.className = type;
+            messages.appendChild(li);
+            messages.scrollTop = messages.scrollHeight;
+        }
+    </script>
+</body>
+</html>
